@@ -34,7 +34,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
-	"google.golang.org/grpc/credentials"
 )
 
 func modifyResponse(resp *http.Response) error {
@@ -95,6 +94,7 @@ func createReverseProxy(endpoint string, transport http.RoundTripper, insecure, 
 				req.Header.Add("Accept", "application/grpc")
 			}
 			req.Header.Add("Accept", "application/grpc-web")
+			req.Header.Add("Host", endpoint)
 
 			if len(contentType) > 0 {
 				// Replacing old content type (e.g., application/grpc), to an overridden content type.
@@ -166,7 +166,12 @@ func createClientProxy(endpoint string, tlsClientConf *tls.Config, forceHTTP2, f
 // Using WebSocket will allow for both streaming and non-streaming gRPC requests, but is not adaptive.
 // Using gRPC-Web "downgrades" will only allow for non-streaming gRPC requests, but will only downgrade if necessary.
 // This method supports server-streaming requests, but only if there isn't a proxy in the middle that buffers chunked responses.
-func ConnectViaProxy(ctx context.Context, endpoint string, tlsClientConf *tls.Config, opts ...ConnectOption) (*grpc.ClientConn, error) {
+func ConnectViaProxy(
+	ctx context.Context,
+	endpoint string,
+	tlsClientConf *tls.Config,
+	opts ...ConnectOption,
+) (*grpc.ClientConn, error) {
 	var connectOpts connectOptions
 	for _, opt := range opts {
 		opt.apply(&connectOpts)
@@ -179,7 +184,14 @@ func ConnectViaProxy(ctx context.Context, endpoint string, tlsClientConf *tls.Co
 	if connectOpts.useWebSocket {
 		proxy, dialCtx, err = createClientWSProxy(endpoint, tlsClientConf)
 	} else {
-		proxy, dialCtx, err = createClientProxy(endpoint, tlsClientConf, connectOpts.forceHTTP2, connectOpts.forceDowngrade, connectOpts.extraH2ALPNs, connectOpts.contentType)
+		proxy, dialCtx, err = createClientProxy(
+			endpoint,
+			tlsClientConf,
+			connectOpts.forceHTTP2,
+			connectOpts.forceDowngrade,
+			connectOpts.extraH2ALPNs,
+			connectOpts.contentType,
+		)
 	}
 
 	if err != nil {
@@ -215,9 +227,9 @@ func makeDialOpts(endpoint string, dialCtx pipeconn.DialContextFunc, tlsClientCo
 	dialOpts = append(dialOpts, grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
 		return dialCtx(ctx)
 	}))
-	if tlsClientConf != nil {
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(newCredsFromSideChannel(endpoint, credentials.NewTLS(tlsClientConf))))
-	}
+	//if tlsClientConf != nil {
+	//	dialOpts = append(dialOpts, grpc.WithTransportCredentials(newCredsFromSideChannel(endpoint, credentials.NewTLS(tlsClientConf))))
+	//}
 	dialOpts = append(dialOpts, connectOpts.dialOpts...)
 
 	return dialOpts

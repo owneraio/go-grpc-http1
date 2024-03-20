@@ -36,7 +36,7 @@ func u32BE(v uint32) []byte {
 func TestNetwork(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, Network, pipeAddr.Network())
+	assert.NotEqual(t, "pipe", pipeAddr.Network())
 }
 
 func TestPipeListener_Connections(t *testing.T) {

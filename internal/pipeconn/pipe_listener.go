@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	// Network is the network reported by a pipe's address.
-	Network = "pipe"
+// Network is the network reported by a pipe's address.
+// Network = "pipe"
 )
 
 var (
