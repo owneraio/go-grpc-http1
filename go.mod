@@ -1,6 +1,6 @@
 module golang.stackrox.io/grpc-http1
 
-go 1.19
+go 1.22.0
 
 require (
 	github.com/golang/glog v1.2.0
@@ -8,7 +8,6 @@ require (
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/net v0.22.0
 	google.golang.org/grpc v1.62.1
-	nhooyr.io/websocket v1.8.10
 )
 
 require (

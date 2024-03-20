@@ -15,84 +15,21 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"unicode"
 
 	"github.com/golang/glog"
 	"golang.stackrox.io/grpc-http1/internal/grpcweb"
-	"golang.stackrox.io/grpc-http1/internal/grpcwebsocket"
-	"golang.stackrox.io/grpc-http1/internal/size"
 	"golang.stackrox.io/grpc-http1/internal/sliceutils"
 	"golang.stackrox.io/grpc-http1/internal/stringutils"
 	"google.golang.org/grpc"
-	"nhooyr.io/websocket"
 )
 
 const (
 	name = "server"
 )
-
-// handleGRPCWS handles gRPC requests via WebSockets.
-func handleGRPCWS(w http.ResponseWriter, req *http.Request, grpcSrv *grpc.Server) {
-	// TODO: Accept the websocket on-demand. For now, this is fine.
-	// Accept a WebSocket connection. No need for compression, as gRPC already compresses messages.
-	conn, err := websocket.Accept(w, req, &websocket.AcceptOptions{
-		CompressionMode: websocket.CompressionDisabled,
-	})
-	if err != nil {
-		http.Error(w, fmt.Sprintf("accepting websocket connection: %v", err), http.StatusInternalServerError)
-		return
-	}
-	conn.SetReadLimit(64 * size.MB)
-
-	ctx := req.Context()
-
-	grpcReq := req.Clone(ctx)
-	grpcReq.ProtoMajor, grpcReq.ProtoMinor, grpcReq.Proto = 2, 0, "HTTP/2.0"
-	grpcReq.Method = http.MethodPost // gRPC requests are always POST requests.
-
-	// Filter out all WebSocket-specific headers.
-	hdr := grpcReq.Header
-	hdr.Del("Connection")
-	hdr.Del("Upgrade")
-	for k := range hdr {
-		if strings.HasPrefix(k, "Sec-Websocket-") {
-			delete(hdr, k)
-		}
-	}
-	// Remove content-length header info.
-	hdr.Del("Content-Length")
-	grpcReq.ContentLength = -1
-
-	// Set the body to a custom WebSocket reader.
-	grpcReq.Body = newWebSocketReader(ctx, conn)
-
-	// Use a custom WebSocket http.ResponseWriter to write messages back to the client.
-	grpcResponseWriter, respReader := newWebSocketResponseWriter()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := grpcwebsocket.Write(ctx, conn, respReader, name); err != nil {
-			_ = conn.Close(websocket.StatusInternalError, err.Error())
-		}
-	}()
-
-	grpcSrv.ServeHTTP(grpcResponseWriter, grpcReq)
-	if err := grpcResponseWriter.Close(); err != nil {
-		_ = conn.Close(websocket.StatusInternalError, err.Error())
-	}
-
-	wg.Wait()
-	// It's ok to potentially close the connection multiple times.
-	// Only the first time matters.
-	_ = conn.Close(websocket.StatusNormalClosure, "")
-}
 
 func handleGRPCWeb(w http.ResponseWriter, req *http.Request, validPaths map[string]struct{}, grpcSrv *grpc.Server, srvOpts *options) {
 	_, isDowngradableMethod := validPaths[req.URL.Path]
@@ -174,14 +111,6 @@ func CreateDowngradingHandler(grpcSrv *grpc.Server, httpHandler http.Handler, op
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if isUpgrade, err := isWebSocketUpgrade(req.Header); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		} else if isUpgrade {
-			handleGRPCWS(w, req, grpcSrv)
-			return
-		}
-
 		if !isContentTypeValid(req.Header.Get("Content-Type")) {
 			// Non-gRPC request to the same port.
 			httpHandler.ServeHTTP(w, req)
@@ -199,22 +128,6 @@ func CreateDowngradingHandler(grpcSrv *grpc.Server, httpHandler http.Handler, op
 func isContentTypeValid(contentType string) bool {
 	ct, _ := stringutils.Split2(contentType, "+")
 	return ct == "application/grpc" || ct == "application/grpc-web"
-}
-
-func isWebSocketUpgrade(header http.Header) (bool, error) {
-	if header.Get("Sec-Websocket-Protocol") != grpcwebsocket.SubprotocolName {
-		return false, nil
-	}
-
-	if !strings.EqualFold(header.Get("Connection"), "upgrade") {
-		return false, errors.New("missing 'Connection: Upgrade' header in gRPC-websocket request (this usually means your proxy or load balancer does not support websockets)")
-	}
-
-	if !strings.EqualFold(header.Get("Upgrade"), "websocket") {
-		return false, errors.New("missing 'Upgrade: websocket' header in gRPC-websocket request (this usually means your proxy or load balancer does not support websockets)")
-	}
-
-	return true, nil
 }
 
 func spaceOrComma(r rune) bool {

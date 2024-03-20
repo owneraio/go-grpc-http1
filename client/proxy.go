@@ -160,10 +160,8 @@ func createClientProxy(endpoint string, tlsClientConf *tls.Config, forceHTTP2, f
 }
 
 // ConnectViaProxy establishes a gRPC client connection via an HTTP/2 proxy that handles endpoints behind HTTP/1.x proxies.
-// Use the WithWebSocket() ConnectOption if you want to connect to a server via WebSocket.
 // Otherwise, setting it to false will use a gRPC-Web "downgrade", as needed.
 //
-// Using WebSocket will allow for both streaming and non-streaming gRPC requests, but is not adaptive.
 // Using gRPC-Web "downgrades" will only allow for non-streaming gRPC requests, but will only downgrade if necessary.
 // This method supports server-streaming requests, but only if there isn't a proxy in the middle that buffers chunked responses.
 func ConnectViaProxy(
@@ -177,22 +175,14 @@ func ConnectViaProxy(
 		opt.apply(&connectOpts)
 	}
 
-	var proxy *http.Server
-	var dialCtx pipeconn.DialContextFunc
-	var err error
-
-	if connectOpts.useWebSocket {
-		proxy, dialCtx, err = createClientWSProxy(endpoint, tlsClientConf)
-	} else {
-		proxy, dialCtx, err = createClientProxy(
-			endpoint,
-			tlsClientConf,
-			connectOpts.forceHTTP2,
-			connectOpts.forceDowngrade,
-			connectOpts.extraH2ALPNs,
-			connectOpts.contentType,
-		)
-	}
+	proxy, dialCtx, err := createClientProxy(
+		endpoint,
+		tlsClientConf,
+		connectOpts.forceHTTP2,
+		connectOpts.forceDowngrade,
+		connectOpts.extraH2ALPNs,
+		connectOpts.contentType,
+	)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "creating client proxy")
