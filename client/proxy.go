@@ -18,10 +18,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"net"
-	"net/http"
-	"net/http/httputil"
-
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
 	"golang.org/x/net/http2"
@@ -35,6 +31,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
+	"net"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
 )
 
 func modifyResponse(resp *http.Response) error {
@@ -104,8 +104,6 @@ func createReverseProxy(endpoint string, transport http.RoundTripper, insecure, 
 			}
 
 			req.URL.Scheme = scheme
-			req.URL.Host = endpoint
-			req.Header.Add("Host", endpoint)
 		},
 		Transport:      transport,
 		ModifyResponse: modifyResponse,
@@ -118,18 +116,25 @@ func createReverseProxy(endpoint string, transport http.RoundTripper, insecure, 
 }
 
 type hostNormalizingTransport struct {
-	next     http.RoundTripper
-	endpoint string
+	next http.RoundTripper
+	host string
 }
 
 func newHostNormalizingTransport(next http.RoundTripper, endpoint string) *hostNormalizingTransport {
-	return &hostNormalizingTransport{next: next, endpoint: endpoint}
+	var pureHost string
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		pureHost = endpoint
+	} else if parsed.Host != "" {
+		pureHost = parsed.Host
+	}
+
+	return &hostNormalizingTransport{next: next, host: pureHost}
 }
 
 func (t *hostNormalizingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	r.Host = t.endpoint
-	r.Header.Add("Host", t.endpoint)
-	r.Header.Add("Special-Host", t.endpoint)
+	r.Host = t.host
+	r.Header.Add("Host", t.host)
 	return t.next.RoundTrip(r)
 }
 
