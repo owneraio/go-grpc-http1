@@ -104,6 +104,9 @@ func createReverseProxy(endpoint string, transport http.RoundTripper, insecure, 
 			}
 
 			req.URL.Scheme = scheme
+			pureHost := resolvePureHost(endpoint)
+			req.URL.Host = pureHost
+			req.Header.Add("Host", pureHost)
 		},
 		Transport:      transport,
 		ModifyResponse: modifyResponse,
@@ -121,6 +124,10 @@ type hostNormalizingTransport struct {
 }
 
 func newHostNormalizingTransport(next http.RoundTripper, endpoint string) *hostNormalizingTransport {
+	return &hostNormalizingTransport{next: next, host: resolvePureHost(endpoint)}
+}
+
+func resolvePureHost(endpoint string) string {
 	var pureHost string
 	parsed, err := url.Parse(endpoint)
 	if err != nil {
@@ -128,8 +135,7 @@ func newHostNormalizingTransport(next http.RoundTripper, endpoint string) *hostN
 	} else if parsed.Host != "" {
 		pureHost = parsed.Host
 	}
-
-	return &hostNormalizingTransport{next: next, host: pureHost}
+	return pureHost
 }
 
 func (t *hostNormalizingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
