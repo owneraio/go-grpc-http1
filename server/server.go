@@ -151,6 +151,7 @@ func handleGRPCWeb(
 	// really should, as the purpose of the TE header according to the gRPC spec is to detect incompatible proxies).
 	req.Header.Set("TE", "trailers")
 	req.Header.Set("Host", req.URL.Host)
+	req.Host = req.URL.Host
 
 	// Downgrade response to gRPC web.
 	transcodingWriter, finalize := grpcweb.NewResponseWriter(w)
