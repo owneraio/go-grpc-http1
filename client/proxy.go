@@ -35,6 +35,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 )
 
 func modifyResponse(resp *http.Response) error {
@@ -134,7 +135,13 @@ func resolvePureHost(endpoint string) string {
 		pureHost = endpoint
 	} else if parsed.Host != "" {
 		pureHost = parsed.Host
+	} else {
+		pureHost = endpoint
+		if strings.Contains(pureHost, ":") {
+			pureHost = pureHost[:strings.LastIndex(pureHost, ":")]
+		}
 	}
+
 	return pureHost
 }
 
