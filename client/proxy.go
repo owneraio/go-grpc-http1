@@ -105,6 +105,7 @@ func createReverseProxy(endpoint string, transport http.RoundTripper, insecure, 
 
 			req.URL.Scheme = scheme
 			req.URL.Host = endpoint
+			req.Header.Add("Host", endpoint)
 		},
 		Transport:      transport,
 		ModifyResponse: modifyResponse,
