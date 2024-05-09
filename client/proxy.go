@@ -117,7 +117,23 @@ func createReverseProxy(endpoint string, transport http.RoundTripper, insecure, 
 	}
 }
 
-func createTransport(tlsClientConf *tls.Config, forceHTTP2 bool, extraH2ALPNs []string) (http.RoundTripper, error) {
+type hostNormalizingTransport struct {
+	next     http.RoundTripper
+	endpoint string
+}
+
+func newHostNormalizingTransport(next http.RoundTripper, endpoint string) *hostNormalizingTransport {
+	return &hostNormalizingTransport{next: next, endpoint: endpoint}
+}
+
+func (t *hostNormalizingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r.Host = t.endpoint
+	r.Header.Add("Host", t.endpoint)
+	r.Header.Add("Special-Host", t.endpoint)
+	return t.next.RoundTrip(r)
+}
+
+func createTransport(endpoint string, tlsClientConf *tls.Config, forceHTTP2 bool, extraH2ALPNs []string) (http.RoundTripper, error) {
 	if forceHTTP2 {
 		transport := &http2.Transport{
 			AllowHTTP:       true,
@@ -148,11 +164,13 @@ func createTransport(tlsClientConf *tls.Config, forceHTTP2 bool, extraH2ALPNs []
 		transport.TLSNextProto[extraALPN] = transport.TLSNextProto["h2"]
 	}
 
-	return transport, nil
+	t := newHostNormalizingTransport(transport, endpoint)
+
+	return t, nil
 }
 
 func createClientProxy(endpoint string, tlsClientConf *tls.Config, forceHTTP2, forceDowngrade bool, extraH2ALPNs []string, contentType string) (*http.Server, pipeconn.DialContextFunc, error) {
-	transport, err := createTransport(tlsClientConf, forceHTTP2, extraH2ALPNs)
+	transport, err := createTransport(endpoint, tlsClientConf, forceHTTP2, extraH2ALPNs)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "creating transport")
 	}
