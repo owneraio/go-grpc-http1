@@ -18,10 +18,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"net"
-	"net/http"
-	"net/http/httputil"
-
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
 	"golang.org/x/net/http2"
@@ -35,6 +31,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
+	"net"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"strings"
 )
 
 func modifyResponse(resp *http.Response) error {
@@ -104,7 +105,8 @@ func createReverseProxy(endpoint string, transport http.RoundTripper, insecure, 
 			}
 
 			req.URL.Scheme = scheme
-			req.URL.Host = endpoint
+			pureHost := resolvePureHost(endpoint)
+			req.URL.Host = pureHost
 		},
 		Transport:      transport,
 		ModifyResponse: modifyResponse,
@@ -116,7 +118,38 @@ func createReverseProxy(endpoint string, transport http.RoundTripper, insecure, 
 	}
 }
 
-func createTransport(tlsClientConf *tls.Config, forceHTTP2 bool, extraH2ALPNs []string) (http.RoundTripper, error) {
+type hostNormalizingTransport struct {
+	next http.RoundTripper
+	host string
+}
+
+func newHostNormalizingTransport(next http.RoundTripper, endpoint string) *hostNormalizingTransport {
+	return &hostNormalizingTransport{next: next, host: resolvePureHost(endpoint)}
+}
+
+func resolvePureHost(endpoint string) string {
+	var pureHost string
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Host == "" {
+		pureHost = endpoint
+	} else {
+		pureHost = parsed.Host
+	}
+
+	if strings.Contains(pureHost, ":") {
+		pureHost = pureHost[:strings.LastIndex(pureHost, ":")]
+	}
+
+	return pureHost
+}
+
+func (t *hostNormalizingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r.Host = t.host
+	r.Header.Add("Host", t.host)
+	return t.next.RoundTrip(r)
+}
+
+func createTransport(endpoint string, tlsClientConf *tls.Config, forceHTTP2 bool, extraH2ALPNs []string) (http.RoundTripper, error) {
 	if forceHTTP2 {
 		transport := &http2.Transport{
 			AllowHTTP:       true,
@@ -147,11 +180,13 @@ func createTransport(tlsClientConf *tls.Config, forceHTTP2 bool, extraH2ALPNs []
 		transport.TLSNextProto[extraALPN] = transport.TLSNextProto["h2"]
 	}
 
-	return transport, nil
+	t := newHostNormalizingTransport(transport, endpoint)
+
+	return t, nil
 }
 
 func createClientProxy(endpoint string, tlsClientConf *tls.Config, forceHTTP2, forceDowngrade bool, extraH2ALPNs []string, contentType string) (*http.Server, pipeconn.DialContextFunc, error) {
-	transport, err := createTransport(tlsClientConf, forceHTTP2, extraH2ALPNs)
+	transport, err := createTransport(endpoint, tlsClientConf, forceHTTP2, extraH2ALPNs)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "creating transport")
 	}
