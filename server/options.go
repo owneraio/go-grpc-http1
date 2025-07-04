@@ -24,6 +24,7 @@ func PreferGRPCWeb(prefer bool) Option {
 	})
 }
 
+// WithGenericMethods enables the downgradable mode for every method
 func WithGenericMethods() Option {
 	return optionFunc(func(o *options) {
 		o.genericMethods = true

@@ -36,6 +36,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 )
 
 func modifyResponse(resp *http.Response) error {
@@ -154,6 +155,8 @@ func createTransport(endpoint string, tlsClientConf *tls.Config, forceHTTP2 bool
 		transport := &http2.Transport{
 			AllowHTTP:       true,
 			TLSClientConfig: tlsClientConf,
+			ReadIdleTimeout: 10 * time.Second,
+			PingTimeout:     10 * time.Second,
 		}
 		if tlsClientConf == nil {
 			transport.DialTLSContext = func(_ context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
@@ -164,8 +167,10 @@ func createTransport(endpoint string, tlsClientConf *tls.Config, forceHTTP2 bool
 	}
 
 	transport := &http.Transport{
-		ForceAttemptHTTP2: true,
-		Proxy:             http.ProxyFromEnvironment,
+		ForceAttemptHTTP2:     true,
+		Proxy:                 http.ProxyFromEnvironment,
+		ResponseHeaderTimeout: 5 * time.Second,
+		IdleConnTimeout:       10 * time.Second,
 	}
 
 	if tlsClientConf != nil {
@@ -229,16 +234,17 @@ func makeProxyServer(handler http.Handler) (*http.Server, pipeconn.DialContextFu
 
 	var http2Srv http2.Server
 	srv := &http.Server{
-		Addr:    lis.Addr().String(),
-		Handler: h2c.NewHandler(nonBufferingHandler(handler), &http2Srv),
+		Addr:              lis.Addr().String(),
+		Handler:           h2c.NewHandler(nonBufferingHandler(handler), &http2Srv),
+		ReadHeaderTimeout: 3 * time.Second,
 	}
 	if err := http2.ConfigureServer(srv, &http2Srv); err != nil {
 		return nil, nil, errors.Wrap(err, "configuring HTTP/2 server")
 	}
 
 	go func() {
-		if err := srv.Serve(lis); err != nil && err != http.ErrServerClosed {
-			glog.Warningf("Unexpected error returned from serving gRPC proxy server: %v", err)
+		if err := srv.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			glog.Errorf("Unexpected error returned from serving gRPC proxy server: %v", err)
 		}
 	}()
 
