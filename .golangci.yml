@@ -1,0 +1,51 @@
+linters-settings:
+  errcheck:
+    # report about not checking of errors in type assertions: `a := b.(MyStruct)`;
+    check-type-assertions: true
+
+  gosimple:
+    # https://staticcheck.io/docs/options#checks
+    checks: [ "all" ]
+
+  staticcheck:
+    # https://staticcheck.io/docs/options#checks
+    checks: [ "all" ]
+
+  unused:
+    # Select the Go version to target. The default is '1.13'.
+    go: "1.16"
+
+  nolintlint:
+    allow-unused: true
+    require-explanation: true
+    require-specific: true
+
+linters:
+  disable-all: true
+  enable:
+  #- errcheck
+  - gosimple
+  - govet
+  - ineffassign
+  - staticcheck
+  - unused
+  - typecheck
+  - bodyclose
+  - dogsled
+  - goconst
+  - gocritic
+  - gofmt
+  - gosec
+#  - prealloc
+  - nolintlint
+
+run:
+  issues-exit-code: 1
+
+issues:
+  exclude:
+    - "grpc.Dial is deprecated"
+    - "grpc.DialContext is deprecated"
+    - "grpc.WithBlock is deprecated"
+    - "TestMain should call os.Exit to set exit code"
+    - "G115: integer overflow conversion"

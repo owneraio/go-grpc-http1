@@ -15,6 +15,7 @@
 export GO111MODULE := on
 export GOBIN := $(CURDIR)/.gobin
 export PATH := $(GOBIN):$(PATH)
+GOLINT=golangci-lint
 
 # Set to empty string to echo some command lines which are hidden by default.
 SILENT ?= @
@@ -35,6 +36,7 @@ imports: dev deps
 lint: dev deps
 	$(SILENT)echo "+ $@"
 	$(SILENT)echo $(sort $(dir $(shell git ls-files -- '*.go'))) | xargs -n 1 golint
+	$(SILENT)$(GOLINT) run
 
 .PHONY: vet
 vet: dev deps

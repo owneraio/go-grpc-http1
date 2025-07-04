@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
@@ -134,11 +135,13 @@ func (c *websocketConn) readFromServer() error {
 		if err := grpcproto.ValidateGRPCFrame(msg); err != nil {
 			return err
 		}
-		if grpcproto.IsDataFrame(msg) {
+
+		switch {
+		case grpcproto.IsDataFrame(msg):
 			if _, err := c.w.Write(msg); err != nil {
 				return err
 			}
-		} else if grpcproto.IsMetadataFrame(msg) {
+		case grpcproto.IsMetadataFrame(msg):
 			if grpcproto.IsCompressed(msg) {
 				return errors.New("compression flag is set; compressed metadata is not supported")
 			}
@@ -146,7 +149,7 @@ func (c *websocketConn) readFromServer() error {
 			if err := setHeader(c.w, msg[grpcproto.MessageHeaderLength:], true); err != nil {
 				return err
 			}
-		} else {
+		default:
 			return errors.New("received an invalid message: expected either data or trailers")
 		}
 	}
@@ -298,7 +301,9 @@ func createClientWSProxy(endpoint string, tlsClientConf *tls.Config) (*http.Serv
 		endpoint: endpoint,
 		httpClient: &http.Client{
 			Transport: &http.Transport{
-				TLSClientConfig: tlsClientConf,
+				TLSClientConfig:       tlsClientConf,
+				ResponseHeaderTimeout: 5 * time.Second,
+				IdleConnTimeout:       20 * time.Second,
 			},
 		},
 	}
